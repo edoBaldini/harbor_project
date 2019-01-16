@@ -13,16 +13,16 @@
 //------------------------------------------------------------------------------
 #define XWIN            2560        // width monitor
 #define YWIN            1980        // height monitor
-#define PERIOD          30
+#define PERIOD          20          // in ms
 #define DLINE           35
 #define PRIO            10
 #define XPORT           1280.f
 #define YPORT           1445.f
-#define VEL             -300
+#define VEL             300
 #define FPS             60.0
 #define FRAME_PERIOD    (1 / FPS)
 #define EPSILON         1          // guardian distance to the goal
-#define XSTARTPOS       1600
+#define XSTARTPOS       20
 #define YSTARTPOS       1980
 //------------------------------------------------------------------------------
 // GLOBAL STRUCTURE
@@ -43,6 +43,15 @@ bool    REDRAW  = true;
 SHIP    titanic;
 ALLEGRO_BITMAP * port;
 
+
+float distance_vector(x_start, y_start, x_target, y_target)
+{
+    float x_m = x_target - x_start;
+    float y_m = y_target - y_target;
+
+    return sqrtf((x_m * x_m) + (y_m * y_m));
+}
+
 void must_init(bool test, const char *description)
 {
     if(test) return;
@@ -62,25 +71,27 @@ void * task(void * arg)
     float desired_degree        = (ALLEGRO_PI / 2);
     float delta_alpha           = desired_degree + initial_degree;
     float trajectory_alpha      = initial_degree;
-    float average_velocity      = 2 * (XPORT - titanic.x);
+    float x_average_velocity     = (2 * (XPORT - titanic.x));
+    float y_average_velocity     = (2 * (YPORT - titanic.y));
+    float average_velocity      = (sqrtf(x_average_velocity * x_average_velocity + y_average_velocity * y_average_velocity));
     float esitmated_trav_time;
     float estimated_cycle;
     float velx;
     float vely;
+    float vel;
     float relative_vel;
+    float degree_control;
     const int id = ptask_id(arg);
     
-    titanic.alpha = (XPORT > titanic.x) ? initial_degree : initial_degree + ALLEGRO_PI; // NOTA!!!!! PER X PIù PICCOLE DEL PORTO NON CI DEVE ESSERE IL + ALLEGRO_PI
-    
+    titanic.alpha = (XPORT > titanic.x) ? initial_degree : initial_degree + ALLEGRO_PI;
+
     if (fabs(average_velocity - VEL) > 0)
         average_velocity = VEL;
 
-    esitmated_trav_time = (XPORT - titanic.x) /(average_velocity * cos(trajectory_alpha));
+    esitmated_trav_time = distance_vector(titanic.x, titanic.y, XPORT, YPORT) / average_velocity;
 
     estimated_cycle = esitmated_trav_time / FRAME_PERIOD;
-    delta_alpha = delta_alpha / estimated_cycle;
-
-    printf("average time %f, pos %f, average_vel %f cos %f trajectory %f\n", esitmated_trav_time, (XPORT - titanic.x), average_velocity, cos(trajectory_alpha), trajectory_alpha);
+    delta_alpha = (XPORT > titanic.x) ? delta_alpha / estimated_cycle : (-1) * delta_alpha / estimated_cycle;
     ptask_activate(id);
 
     
@@ -90,12 +101,15 @@ void * task(void * arg)
         {   
             velx = 2 * (XPORT - titanic.x);
             vely = 2 * (YPORT - titanic.y);
-            relative_vel = (-1)*sqrtf(velx * velx + vely * vely); //NOTA!!! AGGIUNTO IL MENO 1
-            if (relative_vel > VEL)                                 //NOTA!!! HO MESSO IL MAGGIORE PIUTTOSTO CHE IL MINORE
+            vel = (sqrtf(velx * velx + vely * vely));
+            relative_vel = (XPORT > titanic.x) ? vel : (-1) * vel;
+            
+            if (relative_vel < VEL)                                 
                 titanic.vel = relative_vel;
 
-            if (fmod(titanic.alpha, ALLEGRO_PI) <= (desired_degree)) //NOTA!!! QUI HAI MESSO MINORE INVECE CHE MAGGIORE
-                titanic.alpha += delta_alpha;
+            degree_control = (XPORT > titanic.x) ? titanic.alpha : -1*fmod(titanic.alpha, ALLEGRO_PI);
+            if (degree_control >= -(desired_degree)) 
+                titanic.alpha -= delta_alpha;
 
             titanic.x = titanic.x + (titanic.vel * cos(trajectory_alpha) * FRAME_PERIOD);
     
