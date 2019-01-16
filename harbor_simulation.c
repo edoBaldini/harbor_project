@@ -21,7 +21,7 @@
 #define VEL             300
 #define FPS             60.0
 #define FRAME_PERIOD    (1 / FPS)
-#define EPSILON         1          // guardian distance to the goal
+#define EPSILON         1           // guardian distance to the goal
 #define XSTARTPOS       20
 #define YSTARTPOS       1980
 //------------------------------------------------------------------------------
@@ -44,7 +44,7 @@ SHIP    titanic;
 ALLEGRO_BITMAP * port;
 
 
-float distance_vector(x_start, y_start, x_target, y_target)
+float distance_vector(float x_start, float y_start, float x_target, float y_target)
 {
     float x_m = x_target - x_start;
     float y_m = y_target - y_target;
@@ -60,6 +60,36 @@ void must_init(bool test, const char *description)
     exit(1);
 }
 
+void linear_movement(float xtarget_pos,float ytarget_pos, float desired_degree, float delta_alpha, bool reach, float trajectory_alpha)
+{   
+    float velx = 2 * (xtarget_pos - titanic.x);
+    float vely = 2 * (ytarget_pos - titanic.y);
+    float vel = (sqrtf(velx * velx + vely * vely));
+    float relative_vel = (xtarget_pos > titanic.x) ? vel : (-1) * vel;
+            
+    if (relative_vel < VEL)                                 
+        titanic.vel = relative_vel;
+
+    float degree_control = (xtarget_pos > titanic.x) ? titanic.alpha : -1*fmod(titanic.alpha, ALLEGRO_PI);
+    if (degree_control >= -(desired_degree)) 
+        titanic.alpha -= delta_alpha;
+
+    titanic.x = titanic.x + (titanic.vel * cos(trajectory_alpha) * FRAME_PERIOD);
+    
+    if (fabs(xtarget_pos - titanic.x) < EPSILON)
+        titanic.x = XPORT;
+
+    titanic.y = titanic.y + (titanic.vel * sin(trajectory_alpha) * FRAME_PERIOD);
+    
+    if (fabs(ytarget_pos - titanic.y) < EPSILON)
+        titanic.y = YPORT;
+
+    if (titanic.x == xtarget_pos && titanic.y == ytarget_pos)
+    {   
+        reach = true;
+    }
+
+}
 
 void * task(void * arg)
 {
@@ -76,13 +106,10 @@ void * task(void * arg)
     float average_velocity      = (sqrtf(x_average_velocity * x_average_velocity + y_average_velocity * y_average_velocity));
     float esitmated_trav_time;
     float estimated_cycle;
-    float velx;
-    float vely;
-    float vel;
     float relative_vel;
     float degree_control;
     const int id = ptask_id(arg);
-    
+
     titanic.alpha = (XPORT > titanic.x) ? initial_degree : initial_degree + ALLEGRO_PI;
 
     if (fabs(average_velocity - VEL) > 0)
@@ -93,38 +120,12 @@ void * task(void * arg)
     estimated_cycle = esitmated_trav_time / FRAME_PERIOD;
     delta_alpha = (XPORT > titanic.x) ? delta_alpha / estimated_cycle : (-1) * delta_alpha / estimated_cycle;
     ptask_activate(id);
-
-    
     while (!DONE) {
 
         if (!is_reached)
         {   
-            velx = 2 * (XPORT - titanic.x);
-            vely = 2 * (YPORT - titanic.y);
-            vel = (sqrtf(velx * velx + vely * vely));
-            relative_vel = (XPORT > titanic.x) ? vel : (-1) * vel;
-            
-            if (relative_vel < VEL)                                 
-                titanic.vel = relative_vel;
+            linear_movement(XPORT, YPORT, desired_degree, delta_alpha, is_reached, trajectory_alpha);
 
-            degree_control = (XPORT > titanic.x) ? titanic.alpha : -1*fmod(titanic.alpha, ALLEGRO_PI);
-            if (degree_control >= -(desired_degree)) 
-                titanic.alpha -= delta_alpha;
-
-            titanic.x = titanic.x + (titanic.vel * cos(trajectory_alpha) * FRAME_PERIOD);
-    
-            if (fabs(XPORT - titanic.x) < EPSILON)
-                titanic.x = XPORT;
-
-            titanic.y = titanic.y + (titanic.vel * sin(trajectory_alpha) * FRAME_PERIOD);
-    
-            if (fabs(YPORT - titanic.y) < EPSILON)
-                titanic.y = YPORT;
-
-            if (titanic.x == XPORT && titanic.y == YPORT)
-            {   
-                is_reached = true;
-            }
             if (ptask_deadline_miss(id))
             {   
                 printf("%d) deadline missed!\n", id);
