@@ -18,11 +18,11 @@
 #define PRIO            10
 #define XPORT           1280.f
 #define YPORT           1445.f
-#define VEL             300
+#define VEL             100
 #define FPS             60.0
 #define FRAME_PERIOD    (1 / FPS)
-#define EPSILON         1           // guardian distance to the goal
-#define XSTARTPOS       20
+#define EPSILON         1          // guardian distance to the goal
+#define XSTARTPOS       0.f
 #define YSTARTPOS       1980
 //------------------------------------------------------------------------------
 // GLOBAL STRUCTURE
@@ -32,7 +32,8 @@ typedef struct SHIP
     float x, y;
     float width, height;
     float vel;
-    float alpha; 
+    float bow_grade;
+    float traj_grade; 
 } SHIP;
 
 //------------------------------------------------------------------------------
@@ -42,7 +43,7 @@ bool    DONE    = false;
 bool    REDRAW  = true;
 SHIP    titanic;
 ALLEGRO_BITMAP * port;
-
+int     i = 0;
 
 float distance_vector(float x_start, float y_start, float x_target, float y_target)
 {
@@ -60,72 +61,64 @@ void must_init(bool test, const char *description)
     exit(1);
 }
 
-void linear_movement(float xtarget_pos,float ytarget_pos, float desired_degree, float delta_alpha, bool reach, float trajectory_alpha)
+void linear_movement(float xtarget_pos,float ytarget_pos)
 {   
-    float velx = 2 * (xtarget_pos - titanic.x);
-    float vely = 2 * (ytarget_pos - titanic.y);
+
+    float angular_coefficient   = (xtarget_pos == titanic.x) ? xtarget_pos : ((YPORT - titanic.y) / (XPORT - titanic.x));
+    float initial_degree        = atan(angular_coefficient);
+    float desired_degree        = (ALLEGRO_PI / 2);
+    float delta_alpha           = (desired_degree + initial_degree) - titanic.bow_grade;
+    float esitmated_trav_time;
+    float estimated_cycle;
+    float relative_vel;
+    float degree_control;
+    float velx = (xtarget_pos - titanic.x);
+    float vely = (ytarget_pos - titanic.y);
     float vel = (sqrtf(velx * velx + vely * vely));
-    float relative_vel = (xtarget_pos > titanic.x) ? vel : (-1) * vel;
-            
-    if (relative_vel < VEL)                                 
-        titanic.vel = relative_vel;
 
-    float degree_control = (xtarget_pos > titanic.x) ? titanic.alpha : -1*fmod(titanic.alpha, ALLEGRO_PI);
+    relative_vel = (xtarget_pos > titanic.x) ? vel : (-1) * vel;
+
+    if (fabs(relative_vel) > VEL)                                 
+        relative_vel = (xtarget_pos <= titanic.x ) ? - VEL : VEL;
+    titanic.vel = relative_vel;
+
+    titanic.traj_grade = initial_degree;
+
+    esitmated_trav_time = distance_vector(titanic.x, titanic.y, xtarget_pos, ytarget_pos) / relative_vel;
+
+    estimated_cycle = esitmated_trav_time * PERIOD;
+    delta_alpha = (xtarget_pos >= titanic.x) ? delta_alpha / estimated_cycle : (-1) * delta_alpha / estimated_cycle;
+
+    degree_control = (xtarget_pos > titanic.x) ? titanic.bow_grade : -1*fmod(titanic.bow_grade, ALLEGRO_PI);
     if (degree_control >= -(desired_degree)) 
-        titanic.alpha -= delta_alpha;
+        titanic.bow_grade -= delta_alpha;
 
-    titanic.x = titanic.x + (titanic.vel * cos(trajectory_alpha) * FRAME_PERIOD);
+    titanic.x = titanic.x + (titanic.vel * cos(titanic.traj_grade) / PERIOD);
     
     if (fabs(xtarget_pos - titanic.x) < EPSILON)
         titanic.x = XPORT;
 
-    titanic.y = titanic.y + (titanic.vel * sin(trajectory_alpha) * FRAME_PERIOD);
+    titanic.y = titanic.y + (titanic.vel * sin(titanic.traj_grade) / PERIOD);
     
     if (fabs(ytarget_pos - titanic.y) < EPSILON)
         titanic.y = YPORT;
 
-    if (titanic.x == xtarget_pos && titanic.y == ytarget_pos)
-    {   
-        reach = true;
-    }
+    printf("michiama %d, x %f, y %f\n", i, titanic.x, titanic.y);
+    i++;
 
 }
 
 void * task(void * arg)
 {
     // Task private variables
-    bool is_reached = false;
-
-    float angular_coefficient   = ((YPORT - titanic.y) / (XPORT - titanic.x));
-    float initial_degree        = atan(angular_coefficient);
-    float desired_degree        = (ALLEGRO_PI / 2);
-    float delta_alpha           = desired_degree + initial_degree;
-    float trajectory_alpha      = initial_degree;
-    float x_average_velocity     = (2 * (XPORT - titanic.x));
-    float y_average_velocity     = (2 * (YPORT - titanic.y));
-    float average_velocity      = (sqrtf(x_average_velocity * x_average_velocity + y_average_velocity * y_average_velocity));
-    float esitmated_trav_time;
-    float estimated_cycle;
-    float relative_vel;
-    float degree_control;
     const int id = ptask_id(arg);
-
-    titanic.alpha = (XPORT > titanic.x) ? initial_degree : initial_degree + ALLEGRO_PI;
-
-    if (fabs(average_velocity - VEL) > 0)
-        average_velocity = VEL;
-
-    esitmated_trav_time = distance_vector(titanic.x, titanic.y, XPORT, YPORT) / average_velocity;
-
-    estimated_cycle = esitmated_trav_time / FRAME_PERIOD;
-    delta_alpha = (XPORT > titanic.x) ? delta_alpha / estimated_cycle : (-1) * delta_alpha / estimated_cycle;
     ptask_activate(id);
+    titanic.bow_grade = (XPORT < titanic.x) ? ALLEGRO_PI : 0;
     while (!DONE) {
 
-        if (!is_reached)
-        {   
-            linear_movement(XPORT, YPORT, desired_degree, delta_alpha, is_reached, trajectory_alpha);
-
+        if(titanic.x != XPORT || titanic.y != YPORT)
+        {
+            linear_movement(XPORT, YPORT);
             if (ptask_deadline_miss(id))
             {   
                 printf("%d) deadline missed!\n", id);
@@ -215,7 +208,7 @@ int yport = 0; // position of the port on y axis
 
             al_draw_bitmap(port, xport, yport, 0);
             al_draw_filled_circle(XPORT, YPORT, 3,al_map_rgb_f(1, 1, 1));
-            al_draw_rotated_bitmap(ship, titanic.width / 2, 0, titanic.x, titanic.y, titanic.alpha + ALLEGRO_PI / 2, 0);
+            al_draw_rotated_bitmap(ship, titanic.width / 2, 0, titanic.x, titanic.y, titanic.bow_grade + ALLEGRO_PI / 2, 0);
             al_flip_display();
             REDRAW = false;
         }
