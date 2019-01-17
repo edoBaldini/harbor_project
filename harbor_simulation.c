@@ -17,13 +17,13 @@
 #define DLINE           35
 #define PRIO            10
 #define XPORT           1280.f
-#define YPORT           1445.f
+#define YPORT           1500.f
 #define VEL             200
 #define FPS             60.0
 #define FRAME_PERIOD    (1 / FPS)
 #define EPSILON         1        // guardian distance to the goal
-#define XSTARTPOS       1281.f
-#define YSTARTPOS       1700
+#define XSTARTPOS       2000.f
+#define YSTARTPOS       1980.f
 //------------------------------------------------------------------------------
 // GLOBAL STRUCTURE
 //------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ void linear_movement(float xtarget_pos,float ytarget_pos)
         relative_vel = VEL;
     titanic.vel = relative_vel;
     if (titanic.traj_grade == 0)
-        titanic.traj_grade = (xtarget_pos <= titanic.x) ? initial_degree - ALLEGRO_PI + 2 * ALLEGRO_PI  : initial_degree + 2 * ALLEGRO_PI;
+        titanic.traj_grade = (xtarget_pos <= titanic.x) ? initial_degree + ALLEGRO_PI  : initial_degree + 2 * ALLEGRO_PI;
 
     titanic.x = titanic.x + (titanic.vel * cos(titanic.traj_grade) / PERIOD);
     
@@ -90,10 +90,18 @@ void linear_movement(float xtarget_pos,float ytarget_pos)
 
 }
 
-void translation()
+void translation(float xtarget_pos)
 {
-    float angular_coefficient = (xtarget_pos == titanic.x) ? xtarget_pos : ((YPORT - titanic.y) / (XPORT - titanic.x));
+    float angular_coefficient   = (xtarget_pos == titanic.x) ? xtarget_pos : ((YPORT - titanic.y) / (XPORT - titanic.x));
     float initial_degree        = atan(angular_coefficient);
+    float desired_degree       = ALLEGRO_PI / 2;
+    float delta_alpha           = (desired_degree + initial_degree) - titanic.bow_grade;
+    float estimated_cycle = 7 * PERIOD;
+    delta_alpha = delta_alpha / estimated_cycle;
+    float degree_control = (xtarget_pos > titanic.x) ? titanic.bow_grade : -1*fmod(titanic.bow_grade, ALLEGRO_PI);
+    if (degree_control >= -(desired_degree)) 
+        titanic.bow_grade -= delta_alpha;
+
 }
 
 void * task(void * arg)
@@ -107,7 +115,7 @@ void * task(void * arg)
         if(titanic.x != XPORT || titanic.y != YPORT)
         {
             linear_movement(XPORT, YPORT);
-            translation();
+            translation(XPORT);
             if (ptask_deadline_miss(id))
             {   
                 printf("%d) deadline missed!\n", id);
@@ -197,7 +205,8 @@ int yport = 0; // position of the port on y axis
 
             al_draw_bitmap(port, xport, yport, 0);
             al_draw_filled_circle(XPORT, YPORT, 3,al_map_rgb_f(1, 1, 1));
-            al_draw_rotated_bitmap(ship, titanic.width / 2, 0, titanic.x, titanic.y, titanic.traj_grade + ALLEGRO_PI / 2, 0);
+            al_draw_rotated_bitmap(ship, titanic.width / 2, 0, titanic.x, titanic.y, titanic.bow_grade + ALLEGRO_PI / 2, 0);
+
             al_flip_display();
             REDRAW = false;
         }
