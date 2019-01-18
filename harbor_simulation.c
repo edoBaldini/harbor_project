@@ -18,11 +18,11 @@
 #define PRIO            10
 #define XPORT           1280.f
 #define YPORT           1500.f
-#define VEL             60
+#define VEL             70
 #define FPS             60.0
 #define FRAME_PERIOD    (1 / FPS)
 #define EPSILON         2.f        // guardian distance to the goal
-#define XSTARTPOS       300.f
+#define XSTARTPOS       0.f
 #define YSTARTPOS       1980.f
 //------------------------------------------------------------------------------
 // GLOBAL STRUCTURE
@@ -56,7 +56,13 @@ float degree_rect(float x1, float y1, float x2, float y2)
 {
     float angular_coefficient   = (x1 == x2) ? x1 : ((y2 - y1) / (x2 - x1));
     float degree                = atan(angular_coefficient);
-    return (x2 <= x1) ? degree + ALLEGRO_PI  : degree + 2 * ALLEGRO_PI;
+    //return (x2 <= x1) ? degree + ALLEGRO_PI  : degree + 2 * ALLEGRO_PI;
+    return degree;
+}
+
+float estimated_time(float x1, float y1, float x2, float y2)
+{   float time = distance_vector(x1,y1, x2, y2) / titanic.vel;
+    return time;
 }
 
 void must_init(bool test, const char *description)
@@ -73,34 +79,38 @@ bool linear_movement(float xtarget_pos,float ytarget_pos, bool reg_vel)
     float velx;
     float vely;
     float vel;
-    titanic.bow_grade        = degree_rect(titanic.x, titanic.y, xtarget_pos, ytarget_pos);
+
+    titanic.traj_grade = degree_rect(titanic.x, titanic.y, xtarget_pos, ytarget_pos);
+
     if (reg_vel)
     {
-        velx = 2 * (xtarget_pos - titanic.x);
-        vely = 2 * (ytarget_pos - titanic.y);
+        velx = 2 * (xtarget_pos - titanic.x) / 3;
+        vely = 2 * (ytarget_pos - titanic.y) / 3;
         vel = (sqrtf(velx * velx + vely * vely));
         titanic.vel = (fabs(vel) > VEL) ? VEL : vel;
     }
-        
-    if (fabs(xtarget_pos - titanic.x) <= EPSILON)
-        return true;
-    else 
-        titanic.x = titanic.x + (titanic.vel * cos(titanic.bow_grade) / PERIOD);
 
-    if (fabs(ytarget_pos - titanic.y) <= EPSILON )
-    {   
-        return true;
-    }
-    else 
-        titanic.y = titanic.y + (titanic.vel * sin(titanic.bow_grade) / PERIOD);
+    titanic.x = titanic.x + (titanic.vel * cos(titanic.traj_grade) / PERIOD);
 
-    if (titanic.x == xtarget_pos && titanic.y == ytarget_pos)
-    {   
-        return true;
-    }
-    else 
-        return false;
+    titanic.y = titanic.y + (titanic.vel * sin(titanic.traj_grade) / PERIOD);
+ 
+ }
+
+void translation(float x1, float y1, float x2, float y2, float time)
+{
+    float next_degree    =  degree_rect(x1, y1, x2, y2);
+    // float offset;
+    // float delta;          
+    // offset = next_degree + titanic.bow_grade;
+    // delta = offset / 100;
+    // if (titanic.bow_grade != next_degree){
+    //     titanic.bow_grade -= delta;
+    // }    
+    // else printf("ciao\n");
+    titanic.bow_grade = next_degree;
+
 }
+
 
 void * task(void * arg)
 {
@@ -111,8 +121,9 @@ void * task(void * arg)
                         688, 1819, 
                         879, 1719,
                         1217, 1685,
-                        1257, 1600,
+                        1280, 1600,
                         XPORT, YPORT
+                        
 
                     };
     bool reached[] = {
@@ -128,14 +139,21 @@ void * task(void * arg)
     ptask_activate(id);
     int i = 0;
     int len_route = 12;
+    float time;
     while (!DONE) {
 
         if (i < len_route)
         {   
            if (!reached[i])
-            {  // titanic.bow_grade        = degree_rect(titanic.x, titanic.y, route[i], route[i+1]);
+            {  
                 bool need_stop = (i + 1) == (len_route - 1); 
-                reached[i] = linear_movement(route[i], route[i+1], need_stop);
+                linear_movement(route[i], route[i+1], need_stop);
+                reached[i] =    (fabs(route[i] - titanic.x) <= EPSILON && 
+                                 fabs(route[i+1] - titanic.y) <= EPSILON) ? true : false;
+                if (need_stop)
+                    translation(titanic.x, titanic.y, route[i], route[i+1], estimated_time(route[i], route[i+1], route[i], route[i+1]));
+                else 
+                    translation(titanic.x, titanic.y, route[i], route[i+1], estimated_time(route[i], route[i+1], route[i+2], route[i+3]));
             }
             else
                 i = i + 2;
@@ -200,7 +218,6 @@ int yport = 0; // position of the port on y axis
     titanic.vel = VEL;
     titanic.width = al_get_bitmap_width(ship);
     titanic.height = al_get_bitmap_height(ship);
-
     ptask_create(task, PERIOD, DLINE, PRIO);
     al_start_timer(timer);
     while(1)
@@ -230,6 +247,7 @@ int yport = 0; // position of the port on y axis
             al_draw_filled_circle(XPORT, YPORT, 3,al_map_rgb_f(1, 1, 1));
             al_draw_rotated_bitmap(ship, titanic.width / 2, 0, titanic.x, titanic.y, titanic.bow_grade + ALLEGRO_PI / 2, 0);
 
+            al_draw_bitmap(ship, titanic.x -titanic.width/2, titanic.y,0);
             al_flip_display();
             REDRAW = false;
         }
@@ -246,29 +264,4 @@ int yport = 0; // position of the port on y axis
     return 0;
 }
 
-// void translation(float xtarget_pos, float ytarget_pos, )
-// {
-    // if (titanic.vel != VEL)   
-    // {
-        // float initial_degree        = degree_rect(titanic.x, titanic.y, xtarget_pos, ytarget_pos);
-        // float desired_degree        = ALLEGRO_PI / 2;
-        // float cur_offset            = (desired_degree + initial_degree);
-        // float delta_alpha           = (xtarget_pos > titanic.x) ? cur_offset + titanic.bow_grade : cur_offset - titanic.bow_grade;
-        // float estimated_cycle       = 50 * PERIOD;
-        // delta_alpha = delta_alpha / estimated_cycle;
-        // float guard_degree = (xtarget_pos < titanic.x) ? fmod(titanic.bow_grade, ALLEGRO_PI) : titanic.bow_grade - ALLEGRO_PI;
-// 
-        // if (guard_degree < desired_degree)
-            // titanic.bow_grade -= delta_alpha;
-// 
-         // else if (guard_degree > desired_degree)
-                 // titanic.bow_grade -= delta_alpha;
-// 
-//            else titanic.bow_grade = desired_degree;
-// 
-         // if (fabs(guard_degree - desired_degree) <= 0.2)
-            // titanic.bow_grade = - desired_degree;
-        // printf("guard %f, bow grade %f desired %f, delta alpha %f, difference degree %f\n", guard_degree, titanic.bow_grade, desired_degree, delta_alpha, fabs(guard_degree - desired_degree));
-    // }
-// 
-// }
+
