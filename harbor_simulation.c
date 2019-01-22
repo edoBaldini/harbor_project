@@ -247,7 +247,7 @@ int yport = 0; // position of the port on y axis
             al_draw_filled_circle(XPORT, YPORT, 3,al_map_rgb_f(1, 1, 1));
             al_draw_rotated_bitmap(ship, titanic.width / 2, 0, titanic.x, titanic.y, titanic.bow_grade + ALLEGRO_PI / 2, 0);
 
-            al_draw_bitmap(ship, titanic.x -titanic.width/2, titanic.y,0);
+            //al_draw_bitmap(ship, titanic.x -titanic.width/2, titanic.y,0);
             al_flip_display();
             REDRAW = false;
         }
